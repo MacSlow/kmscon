@@ -42,6 +42,15 @@
 
 /* text renderer */
 
+enum Orientation {
+	ORIENTATION_UNDEFINED = 0,
+	ORIENTATION_NORMAL,
+	ORIENTATION_RIGHT,
+	ORIENTATION_INVERTED,
+	ORIENTATION_LEFT,
+	ORIENTATION_MAX
+};
+
 struct kmscon_text;
 struct kmscon_text_ops;
 
@@ -57,6 +66,7 @@ struct kmscon_text {
 	unsigned int cols;
 	unsigned int rows;
 	bool rendering;
+	unsigned int orientation;
 };
 
 struct kmscon_text_ops {
@@ -66,6 +76,7 @@ struct kmscon_text_ops {
 	void (*destroy) (struct kmscon_text *txt);
 	int (*set) (struct kmscon_text *txt);
 	void (*unset) (struct kmscon_text *txt);
+	int (*rotate) (struct kmscon_text *txt, unsigned int orientation);
 	int (*prepare) (struct kmscon_text *txt);
 	int (*draw) (struct kmscon_text *txt,
 		     uint64_t id, const uint32_t *ch, size_t len,
@@ -79,7 +90,7 @@ struct kmscon_text_ops {
 int kmscon_text_register(const struct kmscon_text_ops *ops);
 void kmscon_text_unregister(const char *name);
 
-int kmscon_text_new(struct kmscon_text **out, const char *backend);
+int kmscon_text_new(struct kmscon_text **out, const char *backend, const char *rotate);
 void kmscon_text_ref(struct kmscon_text *txt);
 void kmscon_text_unref(struct kmscon_text *txt);
 
@@ -90,6 +101,9 @@ int kmscon_text_set(struct kmscon_text *txt,
 void kmscon_text_unset(struct kmscon_text *txt);
 unsigned int kmscon_text_get_cols(struct kmscon_text *txt);
 unsigned int kmscon_text_get_rows(struct kmscon_text *txt);
+
+unsigned int kmscon_text_get_orientation(struct kmscon_text *txt);
+int kmscon_text_rotate(struct kmscon_text *txt, unsigned int orientation);
 
 int kmscon_text_prepare(struct kmscon_text *txt);
 int kmscon_text_draw(struct kmscon_text *txt,

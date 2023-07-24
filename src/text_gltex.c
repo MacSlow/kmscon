@@ -42,6 +42,7 @@
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -105,6 +106,7 @@ struct gltex {
 	GLfloat advance_y;
 
 	struct gl_shader *shader;
+	GLuint uni_orientation;
 	GLuint uni_proj;
 	GLuint uni_atlas;
 	GLuint uni_advance_htex;
@@ -112,6 +114,8 @@ struct gltex {
 
 	unsigned int sw;
 	unsigned int sh;
+
+	GLfloat angle;
 };
 
 #define FONT_WIDTH(txt) ((txt)->font->attr.width)
@@ -186,6 +190,7 @@ static int gltex_set(struct kmscon_text *txt)
 	if (ret)
 		goto err_bold_htable;
 
+	gt->uni_orientation = gl_shader_get_uniform(gt->shader, "orientation");
 	gt->uni_proj = gl_shader_get_uniform(gt->shader, "projection");
 	gt->uni_atlas = gl_shader_get_uniform(gt->shader, "atlas");
 	gt->uni_advance_htex = gl_shader_get_uniform(gt->shader,
@@ -202,8 +207,13 @@ static int gltex_set(struct kmscon_text *txt)
 	gt->sw = uterm_mode_get_width(mode);
 	gt->sh = uterm_mode_get_height(mode);
 
-	txt->cols = gt->sw / FONT_WIDTH(txt);
-	txt->rows = gt->sh / FONT_HEIGHT(txt);
+	if (txt->orientation == ORIENTATION_NORMAL || txt->orientation == ORIENTATION_INVERTED) {
+		txt->cols = gt->sw / FONT_WIDTH(txt);
+		txt->rows = gt->sh / FONT_HEIGHT(txt);
+	} else if (txt->orientation == ORIENTATION_RIGHT || txt->orientation == ORIENTATION_LEFT) {
+		txt->cols = gt->sh / FONT_WIDTH(txt);
+		txt->rows = gt->sw / FONT_HEIGHT(txt);
+	}
 
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &s);
 	if (s <= 0)
@@ -523,6 +533,43 @@ err_free:
 	return ret;
 }
 
+static int gltex_rotate(struct kmscon_text *txt, unsigned int orientation)
+{
+	struct gltex *gt = txt->data;
+	int ret = 0;
+
+	txt->orientation = orientation;
+
+	if (txt->orientation == ORIENTATION_NORMAL || txt->orientation == ORIENTATION_INVERTED) {
+		txt->cols = gt->sw / FONT_WIDTH(txt);
+		txt->rows = gt->sh / FONT_HEIGHT(txt);
+	} else if (txt->orientation == ORIENTATION_RIGHT || txt->orientation == ORIENTATION_LEFT) {
+		txt->cols = gt->sh / FONT_WIDTH(txt);
+		txt->rows = gt->sw / FONT_HEIGHT(txt);
+	}
+
+	if (txt->orientation == ORIENTATION_NORMAL ) {
+		gt->angle = .0;
+	} else if (txt->orientation == ORIENTATION_INVERTED) {
+		gt->angle = 180.;
+	} else if (txt->orientation == ORIENTATION_RIGHT) {
+		gt->angle = 90.;
+	} else if (txt->orientation == ORIENTATION_LEFT) {
+		gt->angle = -90.;
+	}
+
+	if (txt->orientation == ORIENTATION_NORMAL || txt->orientation == ORIENTATION_INVERTED) {
+		gt->advance_x = 2.0 / gt->sw * FONT_WIDTH(txt);
+		gt->advance_y = 2.0 / gt->sh * FONT_HEIGHT(txt);
+	} else if (txt->orientation == ORIENTATION_RIGHT || txt->orientation == ORIENTATION_LEFT) {
+		float aspect = (float) gt->sw / (float) gt->sh;
+		gt->advance_x = 2.0 / gt->sw * FONT_WIDTH(txt) * aspect;
+		gt->advance_y = 2.0 / gt->sh * FONT_HEIGHT(txt) * (1./aspect);
+	}
+
+	return ret;
+}
+
 static int gltex_prepare(struct kmscon_text *txt)
 {
 	struct gltex *gt = txt->data;
@@ -540,8 +587,24 @@ static int gltex_prepare(struct kmscon_text *txt)
 		atlas->cache_num = 0;
 	}
 
-	gt->advance_x = 2.0 / gt->sw * FONT_WIDTH(txt);
-	gt->advance_y = 2.0 / gt->sh * FONT_HEIGHT(txt);
+	if (txt->orientation == ORIENTATION_NORMAL ) {
+		gt->angle = .0;
+	} else if (txt->orientation == ORIENTATION_INVERTED) {
+		gt->angle = 180.;
+	} else if (txt->orientation == ORIENTATION_RIGHT) {
+		gt->angle = 90.;
+	} else if (txt->orientation == ORIENTATION_LEFT) {
+		gt->angle = -90.;
+	}
+
+	if (txt->orientation == ORIENTATION_NORMAL || txt->orientation == ORIENTATION_INVERTED) {
+		gt->advance_x = 2.0 / gt->sw * FONT_WIDTH(txt);
+		gt->advance_y = 2.0 / gt->sh * FONT_HEIGHT(txt);
+	} else if (txt->orientation == ORIENTATION_RIGHT || txt->orientation == ORIENTATION_LEFT) {
+		float aspect = (float) gt->sw / (float) gt->sh;
+		gt->advance_x = 2.0 / gt->sw * FONT_WIDTH(txt) * aspect;
+		gt->advance_y = 2.0 / gt->sh * FONT_HEIGHT(txt) * (1./aspect);
+	}
 
 	return 0;
 }
@@ -648,6 +711,7 @@ static int gltex_render(struct kmscon_text *txt)
 
 	gl_m4_identity(mat);
 	glUniformMatrix4fv(gt->uni_proj, 1, GL_FALSE, mat);
+	glUniform1f(gt->uni_orientation, gt->angle);
 
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
@@ -693,6 +757,7 @@ struct kmscon_text_ops kmscon_text_gltex_ops = {
 	.destroy = gltex_destroy,
 	.set = gltex_set,
 	.unset = gltex_unset,
+	.rotate = gltex_rotate,
 	.prepare = gltex_prepare,
 	.draw = gltex_draw,
 	.render = gltex_render,

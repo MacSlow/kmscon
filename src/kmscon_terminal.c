@@ -59,6 +59,16 @@
 
 #define LOG_SUBSYSTEM "terminal"
 
+#include <dbus/dbus.h>
+static const char* FDO_PROPS_INTERFACE = "org.freedesktop.DBus.Properties";
+static const char* FDO_GET_METHOD = "Get";
+static const char* GYRO_CLAIM_METHOD = "ClaimAccelerometer";
+static const char* GYRO_RELEASE_METHOD = "ReleaseAccelerometer";
+static const char* SENSOR_INTERFACE = "net.hadess.SensorProxy";
+static const char* DESTINATION = "net.hadess.SensorProxy";
+static const char* SENSOR_PATH = "/net/hadess/SensorProxy";
+static const char* PROPERTY_HAS_GYRO = "HasAccelerometer";
+
 struct screen {
 	struct shl_dlist list;
 	struct kmscon_terminal *term;
@@ -95,6 +105,12 @@ struct kmscon_terminal {
 
 	struct kmscon_mouse_info* mouse;
 	struct kmscon_selection_info* selection;
+
+	DBusError dbus_error;
+	DBusConnection* dbus_connection;
+	struct ev_timer* dbus_gyro_query_timer;
+	struct itimerspec dbus_gyro_query_timer_spec;
+	bool has_gyro;
 };
 
 static void terminal_resize(struct kmscon_terminal *term,
@@ -239,6 +255,184 @@ static void handle_mouse_drawing(struct kmscon_mouse_info* mouse,
 								   kmscon_mouse_get_x(mouse),
 								   kmscon_mouse_get_y(mouse));
 	}
+}
+
+DBusHandlerResult properties_changed_cb(DBusConnection* connection,
+										DBusMessage* message,
+										void* user_data)
+{
+	// ignore these
+	(void) connection;
+
+	struct kmscon_terminal* term = (struct kmscon_terminal*) user_data;
+	struct shl_dlist *iter;
+
+	const char* orientation = "undefined"; //ORIENTATION_UNDEFINED;
+
+	DBusError error;
+	dbus_error_init (&error);
+
+	const char* interface = dbus_message_get_interface (message);
+	const char* path = dbus_message_get_path (message);
+
+	if (!interface || !path ||
+		(strncmp (interface, FDO_PROPS_INTERFACE, 31) != 0 &&
+		 strncmp (path, SENSOR_PATH, 23) != 0)) {
+			dbus_error_free (&error);
+			return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+	}
+
+	DBusMessageIter args;
+	if (message && !dbus_message_iter_init (message, &args)) {
+		dbus_error_free (&error);
+		return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+	}
+
+	char* value = NULL;
+	int type = 0;
+	DBusMessageIter dict;
+	DBusMessageIter entry;
+	DBusMessageIter variant;
+	while ((type = dbus_message_iter_get_arg_type (&args)) != DBUS_TYPE_INVALID) {
+		switch (type) {
+			case DBUS_TYPE_ARRAY:
+				dbus_message_iter_recurse (&args, &dict);
+				type = dbus_message_iter_get_arg_type (&dict);
+				if (type == DBUS_TYPE_DICT_ENTRY) {
+					dbus_message_iter_recurse (&dict, &entry);
+					while ((type = dbus_message_iter_get_arg_type (&entry)) != DBUS_TYPE_INVALID) {
+						type = dbus_message_iter_get_arg_type (&entry);
+						switch (type) {
+							case DBUS_TYPE_VARIANT:
+								dbus_message_iter_recurse (&entry, &variant);
+								type = dbus_message_iter_get_arg_type (&variant);
+								if (type == DBUS_TYPE_STRING) {
+									dbus_message_iter_get_basic (&variant, &value);
+									orientation = value;
+								}
+							break;
+
+							default: break;
+						}
+						dbus_message_iter_next (&entry);
+					}
+				}
+			break;
+
+			default : break;
+		}
+		dbus_message_iter_next (&args);
+	}
+
+	shl_dlist_for_each(iter, &term->screens) {
+		struct screen *scr = shl_dlist_entry(iter, struct screen, list);
+
+		if (strncmp(orientation, "normal", 6) == 0)
+			kmscon_text_rotate(scr->txt, ORIENTATION_NORMAL);
+
+		if (strncmp(orientation, "left-up", 7) == 0)
+			kmscon_text_rotate(scr->txt, ORIENTATION_LEFT);
+
+		if (strncmp(orientation, "right-up", 8) == 0)
+			kmscon_text_rotate(scr->txt, ORIENTATION_RIGHT);
+
+		if (strncmp(orientation, "bottom-up", 9) == 0)
+			kmscon_text_rotate(scr->txt, ORIENTATION_INVERTED);
+
+		term->min_cols = 0;
+		term->min_rows = 0;
+		terminal_resize(term,
+						kmscon_text_get_cols(scr->txt),
+						kmscon_text_get_rows(scr->txt),
+						true,
+						true);
+	}
+
+	log_info("kmscon_terminal... orientation: %s", orientation);
+
+	dbus_error_free (&error);
+
+	return DBUS_HANDLER_RESULT_HANDLED;
+}
+
+DBusMessage* get_property (DBusConnection* connection,
+						   DBusError* error,
+						   const char* property)
+{
+	DBusMessage* message = dbus_message_new_method_call (DESTINATION,
+														 SENSOR_PATH,
+														 FDO_PROPS_INTERFACE,
+														 FDO_GET_METHOD);
+	if (!message) {
+		return NULL;
+	}
+
+	const char* interface = SENSOR_INTERFACE;
+	DBusMessageIter args;
+	dbus_message_iter_init_append (message, &args);
+	dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &interface);
+	dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &property);
+
+	DBusMessage* reply = dbus_connection_send_with_reply_and_block (connection,
+																	message,
+																	-1,
+																	error);
+	dbus_message_unref (message);
+
+	return reply;
+}
+
+dbus_bool_t has_gyro (DBusConnection* connection, DBusError* error)
+{
+	DBusMessage* reply = get_property (connection, error, PROPERTY_HAS_GYRO);
+
+	if (!reply) {
+		log_error("dbus-message is NULL!");
+		return 0;
+	}
+
+	if (dbus_message_get_type (reply) == DBUS_MESSAGE_TYPE_ERROR) {
+		log_error("%s", dbus_message_get_error_name (reply));
+		return 0;
+	}
+
+	DBusMessageIter reply_args;
+	dbus_message_iter_init (reply, &reply_args);
+	DBusMessageIter variant_iter;
+	dbus_message_iter_recurse (&reply_args, &variant_iter);
+	dbus_bool_t accelerometer;
+	dbus_message_iter_get_basic (&variant_iter, &accelerometer);
+	dbus_message_unref (reply);
+
+	return accelerometer;
+}
+
+void call_method (DBusConnection* connection, const char* method)
+{
+	DBusMessage* message = dbus_message_new_method_call (DESTINATION,
+														 SENSOR_PATH,
+														 SENSOR_INTERFACE,
+														 method);
+
+	dbus_uint32_t serial;
+	dbus_bool_t success = dbus_connection_send (connection, message, &serial);
+
+	if (!success) {
+		log_info("There was an error with the message call '%s'", method);
+	}
+
+	dbus_message_unref (message);
+}
+
+void dbus_gyro_query_timer_cb(struct ev_timer *timer, uint64_t num, void *data)
+{
+	if (!data) {
+		log_warn(" No valid pointer passed to dbus_gyro_query_timer_cb().");
+		return;
+	}
+
+	DBusConnection* dbus_connection = (DBusConnection*) data;
+	dbus_connection_read_write_dispatch (dbus_connection, 1);
 }
 
 static void do_redraw_screen(struct screen *scr)
@@ -721,6 +915,9 @@ static void terminal_destroy(struct kmscon_terminal *term)
 	tsm_screen_unref(term->console);
 	uterm_input_unref(term->input);
 	ev_eloop_unref(term->eloop);
+	call_method (term->dbus_connection, GYRO_RELEASE_METHOD);
+	dbus_error_free (&term->dbus_error);
+	dbus_connection_unref (term->dbus_connection);
 	free(term);
 }
 
@@ -879,8 +1076,62 @@ int kmscon_terminal_register(struct kmscon_session **out,
 	ret = kmscon_seat_register_session(seat, &term->session, session_event,
 					   term);
 	if (ret) {
-		log_error("cannot register session for terminal: %d", ret);
+		log_error("Cannot register session for terminal: %d", ret);
 		goto err_input;
+	}
+
+	dbus_error_init (&term->dbus_error);
+	term->dbus_connection = dbus_bus_get (DBUS_BUS_SYSTEM, &term->dbus_error);
+
+	if (has_gyro (term->dbus_connection, &term->dbus_error)) {
+		term->has_gyro = true;
+		log_info("This system has a gyro-sensor");
+		call_method (term->dbus_connection, GYRO_CLAIM_METHOD);
+	} else {
+		term->has_gyro = false;
+		log_info("This system has NO gyro-sensor");
+	}
+
+	if (term->has_gyro) {
+		dbus_bus_add_match (term->dbus_connection,
+							"type='signal',\
+							interface='org.freedesktop.DBus.Properties',\
+							member='PropertiesChanged',\
+							sender='net.hadess.SensorProxy'",
+							&term->dbus_error);
+
+		dbus_bool_t result = dbus_connection_add_filter(term->dbus_connection,
+														properties_changed_cb,
+														term,
+														NULL);
+
+		if (!result) {
+			log_info("Failed to add filter to connection");
+		}
+
+		// dbus-gyro-query timer
+		term->dbus_gyro_query_timer_spec.it_interval.tv_sec  = 0;
+		term->dbus_gyro_query_timer_spec.it_interval.tv_nsec = 200*1000*1000;
+		term->dbus_gyro_query_timer_spec.it_value.tv_sec  = 0;
+		term->dbus_gyro_query_timer_spec.it_value.tv_nsec = 200*1000*1000;
+
+		ret = ev_timer_new (&term->dbus_gyro_query_timer,
+							&term->dbus_gyro_query_timer_spec,
+							dbus_gyro_query_timer_cb,
+							term->dbus_connection,
+							NULL,
+							NULL);
+		if (ret) {
+			log_error("Cannot create dbus-gyro-query timer: %d", ret);
+			goto err_free;
+		}
+		ev_timer_enable(term->dbus_gyro_query_timer);
+
+		ret = ev_eloop_add_timer(term->eloop, term->dbus_gyro_query_timer);
+		if (ret) {
+			log_error("Cannot add dbus-gyro-query timer to event-loop: %d", ret);
+			goto err_free;
+		}
 	}
 
 	ev_eloop_ref(term->eloop);
@@ -903,6 +1154,9 @@ err_vte:
 err_con:
 	tsm_screen_unref(term->console);
 err_free:
+	call_method (term->dbus_connection, GYRO_RELEASE_METHOD);
+	dbus_error_free (&term->dbus_error);
+	dbus_connection_unref (term->dbus_connection);
 	free(term);
 	return ret;
 }

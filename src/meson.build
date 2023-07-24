@@ -260,7 +260,7 @@ if enable_session_terminal
   kmscon_srcs += 'kmscon_terminal.c'
 endif
 kmscon = executable('kmscon', kmscon_srcs,
-  dependencies: [xkbcommon_deps, libtsm_deps, threads_deps, dl_deps, conf_deps, shl_deps, eloop_deps, uterm_deps],
+  dependencies: [xkbcommon_deps, libtsm_deps, threads_deps, dbus_deps, dl_deps, conf_deps, shl_deps, eloop_deps, uterm_deps],
   export_dynamic: true,
   install: true,
   install_dir: libexecdir,

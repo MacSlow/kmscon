@@ -33,11 +33,21 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <libtsm.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <fcntl.h>
+#include <unistd.h>
+#include <signal.h>
+#include <time.h>
+#include <sys/select.h>
+#include <linux/input.h>
+
 #include "conf.h"
 #include "eloop.h"
 #include "kmscon_conf.h"
+#include "kmscon_mouse.h"
 #include "kmscon_seat.h"
 #include "kmscon_terminal.h"
 #include "pty.h"
@@ -82,6 +92,9 @@ struct kmscon_terminal {
 	struct kmscon_font_attr font_attr;
 	struct kmscon_font *font;
 	struct kmscon_font *bold_font;
+
+	struct kmscon_mouse_info* mouse;
+	struct kmscon_selection_info* selection;
 };
 
 static void terminal_resize(struct kmscon_terminal *term,
@@ -127,6 +140,107 @@ static void do_clear_margins(struct screen *scr)
 	}
 }
 
+static void handle_mouse_word_selection(struct kmscon_mouse_info* mouse,
+										struct kmscon_text* text,
+										struct tsm_screen* console)
+{
+	if (!mouse || !text || !console)
+		return;
+
+	// on left double-click trigger word-wise selection of text
+	if (kmscon_mouse_is_dbl_clicked(mouse, KMSCON_MOUSE_BUTTON_LEFT)) {
+		int from_x = kmscon_mouse_get_x(mouse);
+		int from_y = kmscon_mouse_get_y(mouse);
+		tsm_screen_selection_reset(console);
+		tsm_screen_selection_start(console, 0, from_y);
+		tsm_screen_selection_target(console,
+									text->cols - 1, from_y);
+		kmscon_mouse_selection_copy(mouse, console);
+		tsm_screen_selection_reset(console);
+
+		char* buf = mouse->selection->buffer;
+
+		int start_x = 0;
+		int target_x = 0;
+
+		// find trailing space or end of line
+		for (target_x = from_x; target_x <= text->cols - 1; ++target_x) {
+			if (buf[target_x] == ' ' || buf[target_x] == '\0') {
+				--target_x;
+				break;
+			}
+		}
+
+		// find leading space of start of line
+		for (start_x = from_x; start_x >= 0; --start_x) {
+			if (buf[start_x] == ' ') {
+				++start_x;
+				break;
+			} else if (start_x == 0) {
+				break;
+			}
+		}
+
+		// mark word under cusor and update selection-buffer
+		tsm_screen_selection_start(console, start_x, from_y);
+		tsm_screen_selection_target(console, target_x, from_y);
+		kmscon_mouse_selection_copy(mouse, console);
+		kmscon_mouse_clear_dbl_clicked(mouse, KMSCON_MOUSE_BUTTON_LEFT);
+	}
+}
+
+static void handle_mouse_random_selection(struct kmscon_mouse_info* mouse,
+										  struct kmscon_terminal* terminal)
+{
+	if (!mouse || !terminal)
+		return;
+
+	// paste current selection at current cursor position from buffer
+	if (kmscon_mouse_is_clicked (mouse, KMSCON_MOUSE_BUTTON_MIDDLE) &&
+		!kmscon_mouse_is_selection_empty (mouse)) {
+			kmscon_pty_write(terminal->pty,
+							 mouse->selection->buffer,
+							 mouse->selection->buffer_length);
+			tsm_screen_selection_reset(terminal->console);
+			kmscon_mouse_clear_clicked(mouse, KMSCON_MOUSE_BUTTON_MIDDLE);
+	}
+
+	// mark start of new selection
+	if (kmscon_mouse_is_down(mouse, KMSCON_MOUSE_BUTTON_LEFT)) {
+		int from_x = kmscon_mouse_get_x(mouse);
+		int from_y = kmscon_mouse_get_y(mouse);
+		tsm_screen_selection_reset(terminal->console);
+		tsm_screen_selection_start(terminal->console, from_x, from_y);
+		tsm_screen_selection_target(terminal->console, from_x, from_y);
+	} else if (kmscon_mouse_is_pressed(mouse, KMSCON_MOUSE_BUTTON_LEFT)) {
+		tsm_screen_selection_target(terminal->console,
+									kmscon_mouse_get_x(mouse),
+									kmscon_mouse_get_y(mouse));
+	}
+
+	// copy new selection to buffer
+	if (kmscon_mouse_is_up(mouse, KMSCON_MOUSE_BUTTON_LEFT)) {
+		kmscon_mouse_selection_copy(mouse, terminal->console);
+	}
+}
+
+static void handle_mouse_drawing(struct kmscon_mouse_info* mouse,
+								 struct kmscon_text* txt)
+{
+	if (!mouse || !txt)
+		return;
+
+	// draw mouse-cursor only if no buttons are pressed and hiding is off
+	if (kmscon_mouse_is_released(mouse, KMSCON_MOUSE_BUTTON_LEFT) &&
+		kmscon_mouse_is_released(mouse, KMSCON_MOUSE_BUTTON_MIDDLE) &&
+		kmscon_mouse_is_released(mouse, KMSCON_MOUSE_BUTTON_RIGHT) &&
+		!kmscon_mouse_is_hidden(mouse)) {
+		kmscon_text_render_pointer(txt,
+								   kmscon_mouse_get_x(mouse),
+								   kmscon_mouse_get_y(mouse));
+	}
+}
+
 static void do_redraw_screen(struct screen *scr)
 {
 	int ret;
@@ -140,6 +254,13 @@ static void do_redraw_screen(struct screen *scr)
 	kmscon_text_prepare(scr->txt);
 	tsm_screen_draw(scr->term->console, kmscon_text_draw_cb, scr->txt);
 	kmscon_text_render(scr->txt);
+
+	// deal with mapping normalized coords to character-cell coords
+	kmscon_mouse_set_mapping(scr->term->mouse, scr->disp, scr->txt);
+
+	handle_mouse_word_selection(scr->term->mouse,scr->txt, scr->term->console);
+	handle_mouse_random_selection(scr->term->mouse, scr->term);
+	handle_mouse_drawing(scr->term->mouse, scr->txt);
 
 	ret = uterm_display_swap(scr->disp, false);
 	if (ret) {
@@ -681,6 +802,7 @@ int kmscon_terminal_register(struct kmscon_session **out,
 	term->ref = 1;
 	term->eloop = kmscon_seat_get_eloop(seat);
 	term->input = kmscon_seat_get_input(seat);
+	term->mouse = kmscon_seat_get_mouse(seat);
 	shl_dlist_init(&term->screens);
 
 	term->conf_ctx = kmscon_seat_get_conf(seat);

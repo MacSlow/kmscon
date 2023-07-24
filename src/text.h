@@ -84,6 +84,7 @@ struct kmscon_text_ops {
 		     unsigned int posx, unsigned int posy,
 		     const struct tsm_screen_attr *attr);
 	int (*render) (struct kmscon_text *txt);
+	int (*render_pointer) (struct kmscon_text *txt, int cursor_x, int cursor_y);
 	void (*abort) (struct kmscon_text *txt);
 };
 
@@ -112,6 +113,9 @@ int kmscon_text_draw(struct kmscon_text *txt,
 		     unsigned int posx, unsigned int posy,
 		     const struct tsm_screen_attr *attr);
 int kmscon_text_render(struct kmscon_text *txt);
+int kmscon_text_render_pointer(struct kmscon_text *txt,
+							   int cursor_x,
+							   int cursor_y);
 void kmscon_text_abort(struct kmscon_text *txt);
 
 int kmscon_text_draw_cb(struct tsm_screen *con,

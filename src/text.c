@@ -490,6 +490,31 @@ int kmscon_text_render(struct kmscon_text *txt)
 }
 
 /**
+ * kmscon_text_render_pointer:
+ * @txt: valid text renderer
+ * @cursor_x: column cell coordinate
+ * @cursor_y: row cell coordinate
+ *
+ * This draws a mouse-pointer cross-hair at the current mouse-position..
+ *
+ * Returns: 0 on success, negative error on failure.
+ */
+int kmscon_text_render_pointer(struct kmscon_text *txt,
+                              int cursor_x,
+                              int cursor_y)
+{
+   int ret = 0;
+
+   if (!txt)
+       return -EINVAL;
+
+   if (txt->ops->render_pointer)
+       ret = txt->ops->render_pointer(txt, cursor_x, cursor_y);
+
+   return ret;
+}
+
+/**
  * kmscon_text_abort:
  * @txt: valid text renderer
  *

@@ -205,6 +205,8 @@ if enable_renderer_gltex
       'kmscon_mod_gltex.c',
       embed_gen.process('text_gltex_atlas.vert', extra_args: shader_regex),
       embed_gen.process('text_gltex_atlas.frag', extra_args: shader_regex),
+      embed_gen.process('mouse_pointer.vert', extra_args: shader_regex),
+      embed_gen.process('mouse_pointer.frag', extra_args: shader_regex),
     ],
     name_prefix: '',
     dependencies: [libtsm_deps, glesv2_deps, shl_deps],
@@ -249,6 +251,7 @@ kmscon_srcs = [
   'kmscon_seat.c',
   'kmscon_conf.c',
   'kmscon_main.c',
+  'kmscon_mouse.c',
 ]
 if enable_session_dummy
   kmscon_srcs += 'kmscon_dummy.c'

@@ -125,6 +125,7 @@ static int new_text(struct kmscon_text *text, const char *backend, unsigned int 
 	text->record = record;
 	text->ops = record->data;
 	text->orientation = orientation;
+	text->shader_index = 2;
 
 	if (text->ops->init)
 		ret = text->ops->init(text);

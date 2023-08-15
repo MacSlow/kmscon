@@ -64,9 +64,9 @@ struct kmscon_mouse_info* kmscon_mouse_init(struct ev_eloop* eloop,
 
 		// mouse-query timer
 		mouse->query_timer_spec.it_interval.tv_sec  = 0;
-		mouse->query_timer_spec.it_interval.tv_nsec = 10*1000*1000;
+		mouse->query_timer_spec.it_interval.tv_nsec = 45*1000*1000;
 		mouse->query_timer_spec.it_value.tv_sec  = 0;
-		mouse->query_timer_spec.it_value.tv_nsec = 10*1000*1000;
+		mouse->query_timer_spec.it_value.tv_nsec = 45*1000*1000;
 
 		int ret = ev_timer_new(&mouse->query_timer,
 							   &mouse->query_timer_spec,

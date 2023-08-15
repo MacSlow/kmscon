@@ -1,5 +1,5 @@
 /*
- * kmscon - Fragment Shader
+ * kmscon - Vertex Shader
  *
  * Copyright (c) 2011-2012 David Herrmann <dh.herrmann@googlemail.com>
  * Copyright (c) 2011 University of Tuebingen
@@ -25,27 +25,19 @@
  */
 
 /*
- * Fragment Shader
- * A basic fragment shader which applies a 2D texture and blends foreground and
- * background colors.
+ * Vertex Shader
+ * A basic vertex shader for drawing the background.
  */
 
-precision mediump float;
+uniform mat4 projection;
 
-uniform sampler2D atlas;
-uniform float advance_htex;
-uniform float advance_vtex;
+attribute vec2 position;
+attribute vec2 texture_position;
 
-varying vec2 texpos;
-varying vec3 fgcol;
-varying vec3 bgcol;
+varying vec2 fragCoord;
 
 void main()
 {
-	vec2 pos = vec2(texpos.x * advance_htex, texpos.y * advance_vtex);
-	float alpha = texture2D(atlas, pos).a;
-	vec3 val = alpha * fgcol + (1.0 - alpha) * bgcol;
-    float opacity = 1.0;
-    if (bgcol.r + bgcol.g + bgcol.b < 0.1) opacity = alpha;
-	gl_FragColor = vec4(val, opacity);
+   gl_Position = projection * vec4(position, 0.0, 1.0);
+   fragCoord = texture_position;
 }

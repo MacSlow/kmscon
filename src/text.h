@@ -67,6 +67,7 @@ struct kmscon_text {
 	unsigned int rows;
 	bool rendering;
 	unsigned int orientation;
+	int shader_index;
 };
 
 struct kmscon_text_ops {

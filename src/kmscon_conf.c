@@ -138,6 +138,8 @@ static void print_help()
 		"\t                                  Rotate output clock-wise\n"
 		"\t    --grab-rotate-ccw <grab>    [<Logo>Minus]\n"
 		"\t                                  Rotate output counter-clock-wise\n"
+		"\t    --grab-switch-shader <grab> [<Logo>Minus]\n"
+		"\t                                  Switch to next background shader\n"
 		"\n"
 		"Video Options:\n"
 		"\t    --drm                   [on]     Use DRM if available\n"
@@ -656,6 +658,9 @@ static struct conf_grab def_grab_rotate_cw =
 static struct conf_grab def_grab_rotate_ccw =
 		CONF_SINGLE_GRAB(SHL_LOGO_MASK, XKB_KEY_minus);
 
+static struct conf_grab def_grab_switch_shader =
+		CONF_SINGLE_GRAB(SHL_LOGO_MASK, XKB_KEY_F1);
+
 static palette_t def_palette = {
 	[TSM_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
 	[TSM_COLOR_RED]           = { 205,   0,   0 }, /* red */
@@ -741,6 +746,7 @@ int kmscon_conf_new(struct conf_ctx **out)
 		CONF_OPTION_GRAB(0, "grab-terminal-new", &conf->grab_terminal_new, &def_grab_terminal_new),
 		CONF_OPTION_GRAB(0, "grab-rotate-cw", &conf->grab_rotate_cw, &def_grab_rotate_cw),
 		CONF_OPTION_GRAB(0, "grab-rotate-ccw", &conf->grab_rotate_ccw, &def_grab_rotate_ccw),
+		CONF_OPTION_GRAB(0, "grab-switch-shader", &conf->grab_switch_shader, &def_grab_switch_shader),
 
 		/* Video Options */
 		CONF_OPTION_BOOL_FULL(0, "drm", aftercheck_drm, NULL, NULL, &conf->drm, true),

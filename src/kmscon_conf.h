@@ -139,6 +139,8 @@ struct kmscon_conf_t {
 	struct conf_grab *grab_rotate_cw;
 	/* rotate output counter-clock-wise grab */
 	struct conf_grab *grab_rotate_ccw;
+	/* switch to next background shader grab */
+	struct conf_grab *grab_switch_shader;
 
 	/* Video Options */
 	/* use DRM if available */

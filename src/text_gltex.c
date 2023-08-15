@@ -57,6 +57,14 @@
 #include "text_gltex_atlas.vert.bin.h"
 #include "mouse_pointer.frag.bin.h"
 #include "mouse_pointer.vert.bin.h"
+#include "background.vert.bin.h"
+#include "background-1.frag.bin.h"
+#include "background-2.frag.bin.h"
+#include "background-3.frag.bin.h"
+#include "background-4.frag.bin.h"
+#include "background-5.frag.bin.h"
+#include "background-6.frag.bin.h"
+#include "background-7.frag.bin.h"
 
 #define LOG_SUBSYSTEM "text_gltex"
 
@@ -109,6 +117,19 @@ GLuint mouse_block_outline_indices[] = {0, 1,
 GLuint mouse_block_fill_indices[] = {0, 1, 3,
 									 0, 3, 2};
 
+GLfloat background_vertices[] = {-1.f,  1.f,  // 0) top-left
+								  1.f,  1.f,  // 1) top-right
+								 -1.f, -1.f,  // 2) bottom-left
+								  1.f, -1.f}; // 3) bottom-right
+
+GLfloat background_tex_coords[] = { .0f, 1.f,   // 0) top-left
+								   1.f,  1.f,   // 1) top-right
+									.0f,  .0f,  // 2) bottom-left
+								   1.f,   .0f}; // 3) bottom-right
+
+GLuint background_indices[] = {0, 1, 3,
+							   0, 3, 2};
+
 struct gltex {
 	struct shl_hashtable *glyphs;
 	struct shl_hashtable *bold_glyphs;
@@ -137,6 +158,11 @@ struct gltex {
 	GLuint uni_proj_mouse;
 	GLuint uni_color_mouse;
 	GLuint uni_offset_mouse;
+
+	struct gl_shader *background_shader[7];
+	GLuint uni_res_background[7];
+	GLuint uni_time_background[7];
+	GLuint uni_proj_background[7];
 };
 
 #define FONT_WIDTH(txt) ((txt)->font->attr.width)
@@ -252,6 +278,151 @@ static int gltex_set(struct kmscon_text *txt)
 		goto err_mouse_pointer_shader;
 	}
 
+	/** background start *********/
+	vert = _binary_background_vert_start;
+	vlen = _binary_background_vert_size;
+	frag = _binary_background_1_frag_start;
+	flen = _binary_background_1_frag_size;
+	gl_clear_error();
+	static char *background_attr[] = { "position", "texture_position" };
+	ret = gl_shader_new(&gt->background_shader[0],
+						vert, vlen,
+						frag, flen,
+						background_attr, 1,
+						log_llog, NULL);
+	if (ret)
+		goto err_shader;
+
+	gt->uni_res_background[0] = gl_shader_get_uniform(gt->background_shader[0], "resolution");
+	gt->uni_time_background[0] = gl_shader_get_uniform(gt->background_shader[0], "time");
+	gt->uni_proj_background[0] = gl_shader_get_uniform(gt->background_shader[0], "projection");
+
+	if (gl_has_error(gt->background_shader[0])) {
+		log_warning("cannot create background shader 1");
+		goto err_background_shader;
+	}
+
+	frag = _binary_background_2_frag_start;
+	flen = _binary_background_2_frag_size;
+	gl_clear_error();
+	ret = gl_shader_new(&gt->background_shader[1],
+						vert, vlen,
+						frag, flen,
+						background_attr, 1,
+						log_llog, NULL);
+	if (ret)
+		goto err_shader;
+
+	gt->uni_res_background[1] = gl_shader_get_uniform(gt->background_shader[1], "resolution");
+	gt->uni_time_background[1] = gl_shader_get_uniform(gt->background_shader[1], "time");
+	gt->uni_proj_background[1] = gl_shader_get_uniform(gt->background_shader[1], "projection");
+
+	if (gl_has_error(gt->background_shader[1])) {
+		log_warning("cannot create background shader 2");
+		goto err_background_shader;
+	}
+
+	frag = _binary_background_3_frag_start;
+	flen = _binary_background_3_frag_size;
+	gl_clear_error();
+	ret = gl_shader_new(&gt->background_shader[2],
+						vert, vlen,
+						frag, flen,
+						background_attr, 1,
+						log_llog, NULL);
+	if (ret)
+		goto err_shader;
+
+	gt->uni_res_background[2] = gl_shader_get_uniform(gt->background_shader[2], "resolution");
+	gt->uni_time_background[2] = gl_shader_get_uniform(gt->background_shader[2], "time");
+	gt->uni_proj_background[2] = gl_shader_get_uniform(gt->background_shader[2], "projection");
+
+	if (gl_has_error(gt->background_shader[2])) {
+		log_warning("cannot create background shader 3");
+		goto err_background_shader;
+	}
+
+	frag = _binary_background_4_frag_start;
+	flen = _binary_background_4_frag_size;
+	gl_clear_error();
+	ret = gl_shader_new(&gt->background_shader[3],
+						vert, vlen,
+						frag, flen,
+						background_attr, 1,
+						log_llog, NULL);
+	if (ret)
+		goto err_shader;
+
+	gt->uni_res_background[3] = gl_shader_get_uniform(gt->background_shader[3], "resolution");
+	gt->uni_time_background[3] = gl_shader_get_uniform(gt->background_shader[3], "time");
+	gt->uni_proj_background[3] = gl_shader_get_uniform(gt->background_shader[3], "projection");
+
+	if (gl_has_error(gt->background_shader[3])) {
+		log_warning("cannot create background shader 4");
+		goto err_background_shader;
+	}
+
+	frag = _binary_background_5_frag_start;
+	flen = _binary_background_5_frag_size;
+	gl_clear_error();
+	ret = gl_shader_new(&gt->background_shader[4],
+						vert, vlen,
+						frag, flen,
+						background_attr, 1,
+						log_llog, NULL);
+	if (ret)
+		goto err_shader;
+
+	gt->uni_res_background[4] = gl_shader_get_uniform(gt->background_shader[4], "resolution");
+	gt->uni_time_background[4] = gl_shader_get_uniform(gt->background_shader[4], "time");
+	gt->uni_proj_background[4] = gl_shader_get_uniform(gt->background_shader[4], "projection");
+
+	if (gl_has_error(gt->background_shader[4])) {
+		log_warning("cannot create background shader 5");
+		goto err_background_shader;
+	}
+
+	frag = _binary_background_6_frag_start;
+	flen = _binary_background_6_frag_size;
+	gl_clear_error();
+	ret = gl_shader_new(&gt->background_shader[5],
+						vert, vlen,
+						frag, flen,
+						background_attr, 1,
+						log_llog, NULL);
+	if (ret)
+		goto err_shader;
+
+	gt->uni_res_background[5] = gl_shader_get_uniform(gt->background_shader[5], "resolution");
+	gt->uni_time_background[5] = gl_shader_get_uniform(gt->background_shader[5], "time");
+	gt->uni_proj_background[5] = gl_shader_get_uniform(gt->background_shader[5], "projection");
+
+	if (gl_has_error(gt->background_shader[5])) {
+		log_warning("cannot create background shader 6");
+		goto err_background_shader;
+	}
+
+	frag = _binary_background_7_frag_start;
+	flen = _binary_background_7_frag_size;
+	gl_clear_error();
+	ret = gl_shader_new(&gt->background_shader[6],
+						vert, vlen,
+						frag, flen,
+						background_attr, 1,
+						log_llog, NULL);
+	if (ret)
+		goto err_shader;
+
+	gt->uni_res_background[6] = gl_shader_get_uniform(gt->background_shader[6], "resolution");
+	gt->uni_time_background[6] = gl_shader_get_uniform(gt->background_shader[6], "time");
+	gt->uni_proj_background[6] = gl_shader_get_uniform(gt->background_shader[6], "projection");
+
+	if (gl_has_error(gt->background_shader[6])) {
+		log_warning("cannot create background shader 7");
+		goto err_background_shader;
+	}
+	/** background end *********/
+
 	mode = uterm_display_get_current(txt->disp);
 	gt->sw = uterm_mode_get_width(mode);
 	gt->sh = uterm_mode_get_height(mode);
@@ -282,6 +453,14 @@ static int gltex_set(struct kmscon_text *txt)
 
 	return 0;
 
+err_background_shader:
+	gl_shader_unref(gt->background_shader[0]);
+	gl_shader_unref(gt->background_shader[1]);
+	gl_shader_unref(gt->background_shader[2]);
+	gl_shader_unref(gt->background_shader[3]);
+	gl_shader_unref(gt->background_shader[4]);
+	gl_shader_unref(gt->background_shader[5]);
+	gl_shader_unref(gt->background_shader[6]);
 err_mouse_pointer_shader:
 	gl_shader_unref(gt->mouse_pointer_shader);
 err_shader:
@@ -746,6 +925,43 @@ static int gltex_draw(struct kmscon_text *txt,
 	return 0;
 }
 
+static float fake_time = .0f;
+
+int render_background (struct kmscon_text* txt)
+{
+	struct gltex *gt = txt->data;
+	float mat[16];
+	int shader_index = txt->shader_index;
+
+	gl_clear_error();
+
+	gl_shader_use(gt->background_shader[shader_index]);
+
+	glViewport(0, 0, gt->sw, gt->sh);
+	glDisable(GL_BLEND);
+
+	gl_m4_identity(mat);
+	glUniformMatrix4fv(gt->uni_proj_background[shader_index], 1, GL_FALSE, mat);
+
+	glUniform2f(gt->uni_res_background[shader_index], (GLfloat) gt->sw, (GLfloat) gt->sh);
+
+	fake_time += 0.01f;
+	glUniform1f(gt->uni_time_background[shader_index], fake_time);
+
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+
+	// background
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, background_vertices);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, background_tex_coords);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, background_indices);
+
+	glDisableVertexAttribArray(0);
+	glDisableVertexAttribArray(1);
+
+	return 0;
+}
+
 static int gltex_render(struct kmscon_text *txt)
 {
 	struct gltex *gt = txt->data;
@@ -753,12 +969,15 @@ static int gltex_render(struct kmscon_text *txt)
 	struct shl_dlist *iter;
 	float mat[16];
 
+	render_background(txt);
+
 	gl_clear_error();
 
 	gl_shader_use(gt->shader);
 
 	glViewport(0, 0, gt->sw, gt->sh);
-	glDisable(GL_BLEND);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	gl_m4_identity(mat);
 	glUniformMatrix4fv(gt->uni_proj, 1, GL_FALSE, mat);

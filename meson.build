@@ -39,7 +39,7 @@ mandir = get_option('mandir')
 moduledir = get_option('libdir') / meson.project_name()
 
 systemd_deps = dependency('systemd', required: false)
-systemdsystemunitdir = '/tmp/fasel' #systemd_deps.get_variable('systemdsystemunitdir', default_value: get_option('libdir') / 'systemd/system')
+systemdsystemunitdir = systemd_deps.get_variable('systemdsystemunitdir', default_value: get_option('libdir') / 'systemd/system')
 
 #
 # Required dependencies
@@ -51,7 +51,7 @@ libtsm_deps = dependency('libtsm', version: '>=4.0.2')
 libudev_deps = dependency('libudev', version: '>=172')
 dl_deps = dependency('dl')
 threads_deps = dependency('threads')
-dbus_deps = dependency('dbus-1', version: '>=1.14.4')
+dbus_deps = dependency('dbus-1', version: '>=1.12.0')
 
 python = find_program('python3')
 
